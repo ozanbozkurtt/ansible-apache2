@@ -42,15 +42,22 @@
 - name: Enable all site configs
   command: "a2ensite {{ item.name }}.conf"
   loop: "{{ sites }}"
-  notify: Restart Apache
+  register: enable_site_output
+  changed_when: "'Enabling site' in enable_site_output.stdout"
 
-- name: Check syntax after creating vhost files
+- name: Re-check Apache syntax after enabling sites
   command: apachectl configtest
-  register: vhost_conf_check
+  register: apache_post_enable_check
   changed_when: false
   failed_when: >
-    apache_config_check.rc != 0 or
-    ('Syntax OK' not in apache_config_check.stderr)
+    apache_post_enable_check.rc != 0 or
+    ('Syntax OK' not in apache_post_enable_check.stderr)
+
+- name: Restart Apache if syntax is valid
+  service:
+    name: "{{ apache_service }}"
+    state: restarted
+  when: "'Syntax OK' in apache_post_enable_check.stderr"
 
 - name: Add virtual hosts to /etc/hosts
   blockinfile:
