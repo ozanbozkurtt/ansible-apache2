@@ -1,0 +1,5 @@
+- name: Deploy Apache multi-site structure
+  hosts: webservers
+  become: yes
+  roles:
+    - apache

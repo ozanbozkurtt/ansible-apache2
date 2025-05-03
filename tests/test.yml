@@ -1,0 +1,6 @@
+- name: Test each website with curl
+  uri:
+    url: "http://{{ item.name }}"
+    return_content: yes
+  register: curl_result
+  loop: "{{ sites }}"

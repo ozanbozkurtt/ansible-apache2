@@ -1,0 +1,72 @@
+---
+# tasks file for apache
+
+- name: Install Apache
+  apt:
+    name: "{{ apache_package }}"
+    state: present
+    update_cache: yes
+
+- name: Deploy apache2.conf
+  template:
+    src: apache2.conf.j2
+    dest: /etc/apache2/apache2.conf
+  notify: Restart Apache
+
+- name: Check apache2.conf syntax
+  command: apachectl configtest
+  register: apache_config_check
+  changed_when: false
+  failed_when: >
+    apache_config_check.rc != 0 or
+    ('Syntax OK' not in apache_config_check.stderr)
+
+- name: Create site root directories
+  file:
+    path: "/var/www/{{ item.name }}"
+    state: directory
+  loop: "{{ sites }}"
+
+- name: Create index.html for each site
+  template:
+    src: index.html.j2
+    dest: "/var/www/{{ item.name }}/index.html"
+  loop: "{{ sites }}"
+
+- name: Create vhost files for each site
+  template:
+    src: vhost.conf.j2
+    dest: "/etc/apache2/sites-available/{{ item.name }}.conf"
+  loop: "{{ sites }}"
+
+- name: Enable all site configs
+  command: "a2ensite {{ item.name }}.conf"
+  loop: "{{ sites }}"
+  notify: Restart Apache
+
+- name: Check syntax after creating vhost files
+  command: apachectl configtest
+  register: vhost_conf_check
+  changed_when: false
+  failed_when: >
+    apache_config_check.rc != 0 or
+    ('Syntax OK' not in apache_config_check.stderr)
+
+- name: Add virtual hosts to /etc/hosts
+  blockinfile:
+    path: /etc/hosts
+    block: |
+      127.0.0.1 {% for site in sites %}{{ site.name }} {% endfor %}
+    marker: "# {mark} Ansible managed block for Apache vhosts"
+
+- name: Test each website with curl
+  uri:
+    url: "http://{{ item.name }}"
+    return_content: yes
+  register: curl_result
+  loop: "{{ sites }}"
+
+- name: Display curl results
+  debug:
+    msg: "Response from {{ item.item.name }}: {{ item.content }}"
+  loop: "{{ curl_result.results }}"
